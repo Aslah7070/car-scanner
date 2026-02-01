@@ -1,138 +1,175 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useState } from 'react';
-import { AlertTriangle, CarFront, Lightbulb, MessageSquare, CheckCircle, Loader2 } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { CarFront, Phone, Loader2, Save, UserPlus } from 'lucide-react';
+import useSWR from 'swr';
+
+const fetcher = (url: string) => fetch(url).then(res => {
+    if (res.status === 404) return { found: false }; // Handle 404 as data, not error
+    if (!res.ok) throw new Error('Failed to fetch');
+    return res.json();
+});
 
 export default function ScanPage() {
-    // Unwrapping params is sometimes necessary in newer Next.js versions if treating as props, but useParams hook handles it.
     const params = useParams();
+    const router = useRouter();
     const carId = params?.carId as string;
-    const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-    const [errorMessage, setErrorMessage] = useState('');
-    const [customMessage, setCustomMessage] = useState('');
-    const [showCustom, setShowCustom] = useState(false);
 
-    const sendAlert = async (type: string, msg?: string) => {
-        setStatus('sending');
-        setErrorMessage('');
+    // Fetch car data using SWR
+    const { data, error, isLoading, mutate } = useSWR(`/api/car/${carId}`, fetcher);
+
+    // Registration Form State
+    const [regLoading, setRegLoading] = useState(false);
+    const [regError, setRegError] = useState('');
+
+    const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setRegLoading(true);
+        setRegError('');
+
+        const formData = new FormData(e.currentTarget);
+        const submitData = {
+            vehicleNumber: formData.get('vehicleNumber'),
+            phoneNumber: formData.get('phoneNumber'),
+            carId: carId // IMPORTANT: Register THIS specific scanned ID
+        };
+
         try {
-            const res = await fetch('/api/notify', {
+            const res = await fetch('/api/register', {
                 method: 'POST',
-                body: JSON.stringify({
-                    carId,
-                    type,
-                    message: msg || customMessage
-                }),
+                body: JSON.stringify(submitData),
                 headers: { 'Content-Type': 'application/json' }
             });
-            const d = await res.json();
-            if (!res.ok) {
-                throw new Error(d.error || 'Failed');
-            }
-            setStatus('sent');
-        } catch (e: any) {
-            setStatus('error');
-            setErrorMessage(e.message || 'Error occurred');
+
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Registration failed');
+
+            // Refresh data to show the Contact Card immediately
+            mutate();
+        } catch (err: any) {
+            setRegError(err.message);
+        } finally {
+            setRegLoading(false);
         }
     };
 
-    if (status === 'sent') {
+    if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center animate-in zoom-in-95 duration-300">
-                <div className="w-24 h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-6 shadow-glow-green">
-                    <CheckCircle className="w-12 h-12" />
+            <div className="flex min-h-screen items-center justify-center">
+                <Loader2 className="w-10 h-10 animate-spin text-primary" />
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex min-h-screen items-center justify-center p-4">
+                <div className="text-red-500 bg-red-500/10 p-4 rounded-xl">
+                    Failed to load tag data. Please try again.
                 </div>
-                <h1 className="text-3xl font-bold mb-2">Alert Sent!</h1>
-                <p className="text-muted-foreground max-w-xs mx-auto">The vehicle owner has been notified via WhatsApp/SMS immediately.</p>
-                <p className="text-sm text-muted-foreground mt-2">Thank you for helping!</p>
-                <button onClick={() => setStatus('idle')} className="mt-12 px-8 py-3 rounded-full bg-secondary hover:bg-secondary/80 transition-colors font-medium">Notify Again</button>
+            </div>
+        );
+    }
+
+    // --- CASE 1: NOT REGISTERED (Show Register Form) ---
+    if (data && data.found === false) {
+        return (
+            <div className="flex flex-col min-h-screen p-6 max-w-md mx-auto justify-center">
+                <div className="text-center mb-8">
+                    <div className="w-20 h-20 bg-secondary rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                        <UserPlus className="w-10 h-10 text-primary" />
+                    </div>
+                    <h1 className="text-3xl font-bold mb-2">Unregistered Tag</h1>
+                    <p className="text-muted-foreground">This QR code is active but not linked to a vehicle yet.</p>
+                </div>
+
+                <div className="glass p-8 rounded-2xl border border-border shadow-xl">
+                    <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                        <Save className="w-5 h-5 text-primary" /> Register Now
+                    </h2>
+
+                    {regError && (
+                        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-sm rounded-lg">
+                            {regError}
+                        </div>
+                    )}
+
+                    <form onSubmit={handleRegister} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1.5 text-muted-foreground">Vehicle Number</label>
+                            <input
+                                name="vehicleNumber"
+                                required
+                                placeholder="e.g. KA-01-AB-1234"
+                                className="w-full bg-secondary/50 border border-input rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary transition-all"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1.5 text-muted-foreground">Phone Number</label>
+                            <input
+                                name="phoneNumber"
+                                required
+                                type="tel"
+                                placeholder="+91 99999 88888"
+                                className="w-full bg-secondary/50 border border-input rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary transition-all"
+                            />
+                        </div>
+                        <button
+                            disabled={regLoading}
+                            className="w-full bg-primary text-primary-foreground py-4 rounded-xl font-bold mt-2 hover:bg-primary/90 transition-all disabled:opacity-70 flex justify-center"
+                        >
+                            {regLoading ? <Loader2 className="animate-spin" /> : 'Link to this QR'}
+                        </button>
+                    </form>
+                </div>
+                <p className="text-center text-xs text-muted-foreground mt-8 opacity-60">
+                    Once registered, scanning this QR will show these details.
+                </p>
             </div>
         )
     }
 
+    // --- CASE 2: REGISTERED (Show Contact Details) ---
     return (
-        <div className="flex flex-col min-h-screen p-4 max-w-lg mx-auto justify-between">
-            <header className="py-6 text-center">
-                <div className="inline-block px-3 py-1 rounded-full bg-secondary/50 text-xs text-muted-foreground mb-2">Secure & Private</div>
-                <h1 className="text-3xl font-bold">Vehicle Alert</h1>
-                <p className="text-muted-foreground mt-1">Found an issue with this car?</p>
-            </header>
+        <div className="flex flex-col min-h-screen p-6 max-w-md mx-auto justify-center relative overflow-hidden">
+            {/* Background decoration */}
+            <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-primary/10 to-transparent -z-10" />
 
-            <div className="flex-1 grid gap-4 content-center py-4">
-                <AlertButton
-                    icon={<CarFront size={32} />}
-                    label="Blocking the Way"
-                    color="bg-gradient-to-br from-red-500 to-red-600"
-                    onClick={() => sendAlert('block', 'Your car is blocking the way.')}
-                    disabled={status === 'sending'}
-                />
-                <AlertButton
-                    icon={<Lightbulb size={32} />}
-                    label="Lights Are On"
-                    color="bg-gradient-to-br from-yellow-400 to-yellow-600"
-                    onClick={() => sendAlert('light', 'You left your lights on.')}
-                    disabled={status === 'sending'}
-                />
-                <AlertButton
-                    icon={<AlertTriangle size={32} />}
-                    label="Emergency"
-                    color="bg-gradient-to-br from-orange-500 to-orange-700"
-                    onClick={() => sendAlert('emergency', 'There is an emergency with your car.')}
-                    disabled={status === 'sending'}
-                />
-
-                <div className="mt-2">
-                    <button
-                        onClick={() => setShowCustom(!showCustom)}
-                        className="w-full py-4 rounded-xl border border-secondary bg-secondary/30 flex items-center justify-center gap-2 text-muted-foreground hover:bg-secondary/50 transition-all hover:text-white"
-                    >
-                        <MessageSquare size={20} /> {showCustom ? 'Cancel Message' : 'Write Custom Message'}
-                    </button>
+            <div className="text-center mb-10">
+                <div className="inline-block p-4 rounded-full bg-secondary mb-6 shadow-lg">
+                    <CarFront className="w-12 h-12 text-primary" />
                 </div>
-
-                {showCustom && (
-                    <div className="mt-2 glass p-4 rounded-xl animate-in fade-in slide-in-from-bottom-4 border-l-4 border-l-primary">
-                        <textarea
-                            value={customMessage}
-                            onChange={e => setCustomMessage(e.target.value)}
-                            placeholder="Type your message here..."
-                            className="w-full bg-secondary/50 border border-input rounded-lg p-3 outline-none focus:ring-2 focus:ring-primary mb-3 h-24 text-base resize-none"
-                        />
-                        <button
-                            onClick={() => sendAlert('other')}
-                            disabled={!customMessage.trim() || status === 'sending'}
-                            className="w-full bg-primary text-primary-foreground py-3 rounded-lg font-bold hover:bg-primary/90 disabled:opacity-50 transition-all flex justify-center items-center"
-                        >
-                            {status === 'sending' ? <Loader2 className="animate-spin" /> : 'Send Message'}
-                        </button>
-                    </div>
-                )}
+                <h1 className="text-4xl font-bold mb-2 tracking-tight">Vehicle Contact</h1>
+                <p className="text-muted-foreground">Owner details for this vehicle.</p>
             </div>
 
-            {status === 'error' && (
-                <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-center animate-pulse">
-                    {errorMessage || 'Failed to send alert. Try again.'}
+            <div className="space-y-6 animate-in slide-in-from-bottom-8 duration-500">
+                {/* Vehicle Number Card */}
+                <div className="glass p-6 rounded-2xl border border-border flex flex-col items-center justify-center text-center shadow-sm">
+                    <span className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Vehicle Number</span>
+                    <span className="text-3xl font-mono font-bold text-foreground bg-secondary/50 px-4 py-2 rounded-lg border border-secondary">
+                        {data.vehicleNumber}
+                    </span>
                 </div>
-            )}
 
-            <footer className="py-6 text-center text-xs text-muted-foreground opacity-50">
-                Privacy Protected by SecureQR System
+                {/* Phone Number Card */}
+                <div className="glass p-6 rounded-2xl border border-border flex flex-col items-center justify-center text-center shadow-lg bg-gradient-to-br from-secondary/30 to-background">
+                    <span className="text-xs uppercase tracking-widest text-muted-foreground mb-4">Contact Number</span>
+                    <a href={`tel:${data.phoneNumber}`} className="flex items-center gap-3 text-3xl font-bold text-primary hover:underline decoration-2 underline-offset-4 transition-all">
+                        <Phone className="w-8 h-8 fill-current" />
+                        {data.phoneNumber}
+                    </a>
+                    <p className="text-xs text-muted-foreground mt-4">Tap to Call</p>
+                </div>
+            </div>
+
+            <footer className="mt-12 text-center text-sm text-muted-foreground">
+                <p>Scanner App</p>
             </footer>
         </div>
-    )
+    );
 }
 
-function AlertButton({ icon, label, color, onClick, disabled }: any) {
-    return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            className={`w-full py-6 md:py-8 rounded-2xl flex items-center px-6 gap-6 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 ${color} text-white shadow-lg relative overflow-hidden group`}
-        >
-            <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-            <div className="p-4 bg-white/20 rounded-full backdrop-blur-sm shadow-inner">{icon}</div>
-            <span className="text-xl font-bold tracking-wide text-left">{label}</span>
-        </button>
-    )
-}
+// Helper specific to this file not needed outside
+function AlertButton() { return null; }
