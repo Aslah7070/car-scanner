@@ -10,10 +10,13 @@ export async function POST(req: Request) {
         if (!vehicleNumber || !phoneNumber) {
             return NextResponse.json({ error: 'Vehicle number and phone number are required.' }, { status: 400 });
         }
+console.log("vehicleNumber",vehicleNumber)
+        console.log("phoneNumber",phoneNumber)
 
         if (!isValidPhone(phoneNumber)) {
             return NextResponse.json({ error: 'Invalid phone number format.' }, { status: 400 });
         }
+        
 
         await connectDB();
 
@@ -35,6 +38,9 @@ export async function POST(req: Request) {
             phoneNumber,
             carId,
         });
+
+             console.log("car",car)
+    
 
         return NextResponse.json({ success: true, carId: car.carId });
 
