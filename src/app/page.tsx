@@ -1,63 +1,124 @@
-import Link from 'next/link';
+'use client';
+
+import { useState } from 'react';
+import { Download, Plus, QrCode } from 'lucide-react';
+import { generateCarId } from '@/lib/utils';
+import Image from 'next/image';
 
 export default function Home() {
+  const [qrData, setQrData] = useState<{ url: string, image: string, id: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const generateNewTag = async () => {
+    setLoading(true);
+    try {
+      // Generate a random ID client-side or via API if needed.
+      // Using the API ensures we get a valid formatted QR image returned.
+      // We pass a random ID to the QR API to generate coordinates
+      const randomId = generateCarId();
+
+      const res = await fetch(`/api/qr?carId=${randomId}`);
+      if (!res.ok) throw new Error('Failed to generate');
+
+      const data = await res.json();
+      setQrData({
+        url: data.url,    // The URL embedded in QR (e.g. site.com/scan/ID)
+        image: data.qrImage, // The base64 image
+        id: randomId
+      });
+    } catch (e) {
+      console.error(e);
+      alert('Failed to generate tag. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadQr = () => {
+    if (!qrData) return;
+    const link = document.createElement('a');
+    link.href = qrData.image;
+    link.download = `car-tag-${qrData.id}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] px-4 text-center relative overflow-hidden">
-      <div className="absolute -top-20 -right-20 p-6 opacity-20 pointer-events-none">
-        <div className="w-96 h-96 bg-primary blur-[120px] rounded-full"></div>
-      </div>
-      <div className="absolute top-40 -left-20 p-6 opacity-10 pointer-events-none">
-        <div className="w-72 h-72 bg-purple-500 blur-[120px] rounded-full"></div>
-      </div>
+    <div className="flex flex-col items-center justify-center min-h-screen px-4 py-12 relative overflow-hidden">
 
-      <div className="z-10 mt-20">
-        <span className="inline-block py-1 px-3 rounded-full bg-secondary border border-border text-sm text-primary mb-6 animate-fade-in-up">
-          🛡️ Next-Gen Vehicle Privacy
-        </span>
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-          Drive Safe.<br />Stay Private.
-        </h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
-          The smart way to let people contact you about your parked car without sharing your phone number.
-        </p>
+      {/* Background Atmosphere */}
+      <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-primary/20 blur-[150px] rounded-full pointer-events-none" />
+      <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-purple-500/10 blur-[150px] rounded-full pointer-events-none" />
 
-        <div className="flex gap-4 justify-center flex-wrap">
-          <Link
-            href="/register"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 px-8 py-4 rounded-full font-bold text-lg transition-all shadow-lg shadow-primary/25 hover:scale-105 active:scale-95"
-          >
-            Get Your Tag
-          </Link>
+      <div className="z-10 text-center max-w-md w-full">
+        <h1 className="text-4xl font-bold mb-2 tracking-tighter">My Smart Tag</h1>
+        <p className="text-muted-foreground mb-12">Generate a tag. Print it. Stick it.</p>
+
+        {/* Card Container */}
+        <div className="glass p-8 rounded-3xl border border-white/10 shadow-2xl flex flex-col items-center min-h-[400px] justify-center transition-all duration-500">
+
+          {!qrData ? (
+            <div className="flex flex-col items-center animate-in fade-in zoom-in duration-500">
+              <div className="w-24 h-24 bg-secondary/50 rounded-full flex items-center justify-center mb-6">
+                <QrCode className="w-10 h-10 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium mb-2">No Tag Generated</h3>
+              <p className="text-sm text-muted-foreground mb-8 max-w-xs">
+                Create a unique QR code for your vehicle to get started.
+              </p>
+              <button
+                onClick={generateNewTag}
+                disabled={loading}
+                className="group relative overflow-hidden bg-primary text-primary-foreground px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-primary/25 transition-all hover:scale-105 active:scale-95 disabled:opacity-70 disabled:scale-100"
+              >
+                <span className="relative z-10 flex items-center gap-2">
+                  {loading ? 'Generating...' : <><Plus size={20} /> Generate New Tag</>}
+                </span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center w-full animate-in flip-in-y duration-700">
+              <div className="bg-white p-4 rounded-xl shadow-inner mb-6 relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-primary to-purple-600 rounded-2xl opacity-30 blur group-hover:opacity-50 transition-opacity duration-500"></div>
+                <img
+                  src={qrData.image}
+                  alt="QR Code"
+                  className="w-48 h-48 object-contain relative z-10"
+                />
+              </div>
+
+              <div className="text-center mb-8">
+                <p className="text-xs font-mono text-muted-foreground mb-1">TAG ID</p>
+                <p className="text-2xl font-mono font-bold tracking-widest">{qrData.id}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 w-full">
+                <button
+                  onClick={downloadQr}
+                  className="flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-foreground py-3 rounded-xl font-medium transition-colors"
+                >
+                  <Download size={18} /> Download
+                </button>
+                <button
+                  onClick={() => setQrData(null)}
+                  className="flex items-center justify-center gap-2 bg-secondary/30 hover:bg-destructive/10 hover:text-destructive text-muted-foreground py-3 rounded-xl font-medium transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+              <p className="mt-6 text-xs text-muted-foreground/60 max-w-xs">
+                Download this image and verify by scanning it with your phone camera.
+              </p>
+            </div>
+          )}
+
         </div>
       </div>
 
-      <div className="mt-32 grid md:grid-cols-3 gap-8 text-left max-w-5xl mx-auto w-full px-4">
-        <FeatureCard
-          icon="🔒"
-          title="100% Private"
-          desc="Your phone number is never revealed to the scanner. We mask your identity completely."
-        />
-        <FeatureCard
-          icon="⚡"
-          title="Instant Alerts"
-          desc="Receive WhatsApp or SMS alerts instantly when someone scans your QR code."
-        />
-        <FeatureCard
-          icon="🛑"
-          title="No App Needed"
-          desc="People can scan your tag with any standard camera. No app download required."
-        />
-      </div>
+      <footer className="mt-auto py-6 text-center text-xs text-muted-foreground/40">
+        Secure Vehicle Tag System &copy; 2026
+      </footer>
     </div>
   );
-}
-
-function FeatureCard({ icon, title, desc }: { icon: string, title: string, desc: string }) {
-  return (
-    <div className="p-8 rounded-2xl glass hover:bg-secondary/80 transition-colors duration-300">
-      <div className="text-4xl mb-6">{icon}</div>
-      <h3 className="text-xl font-bold mb-3">{title}</h3>
-      <p className="text-muted-foreground leading-relaxed">{desc}</p>
-    </div>
-  )
 }
